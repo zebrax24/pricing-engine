@@ -8,8 +8,12 @@ import type {
   LoanType,
   MiFinanced,
   MiType,
+  PropertyState,
+  PropertyType,
+  PropertyUse,
   SpecialProduct,
   VaFundingFee,
+  YesNo,
 } from "@/lib/pricing/domain";
 
 export const LIEN_POSITIONS: LienPosition[] = ["1st mortgage", "2nd mortgage"];
@@ -67,3 +71,25 @@ export const VA_FUNDING_FEE_OPTIONS: VaFundingFee[] = [
   "Financed",
   "Partial Financed",
 ];
+
+export const PROPERTY_STATES: PropertyState[] = ["CA", "CO", "NV", "TX", "TN"];
+
+export const PROPERTY_TYPES: PropertyType[] = [
+  "Single Family Residence",
+  "Duplex",
+  "Triplex",
+  "4-Unit",
+  "Condo",
+  "Detached Condo",
+  "Pud",
+  "Attached Pud",
+  "Townhouse",
+];
+
+export const PROPERTY_USES: PropertyUse[] = [
+  "Primary",
+  "2nd Home",
+  "Investment",
+];
+
+export const YES_NO_OPTIONS: YesNo[] = ["Yes", "No"];

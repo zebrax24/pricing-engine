@@ -5,6 +5,8 @@ import { useMemo, useState } from "react";
 import type { LoanTerm, PricingScenario } from "@/lib/pricing/domain";
 import {
   calculateLtv,
+  FICO_MAX,
+  FICO_MIN,
   LOAN_AMOUNT_MAX,
   LOAN_AMOUNT_MIN,
   LTV_MI_THRESHOLD,
@@ -22,8 +24,12 @@ import {
   LOAN_TYPES,
   MI_FINANCED_OPTIONS,
   MI_TYPE_OPTIONS,
+  PROPERTY_STATES,
+  PROPERTY_TYPES,
+  PROPERTY_USES,
   SPECIAL_PRODUCTS,
   VA_FUNDING_FEE_OPTIONS,
+  YES_NO_OPTIONS,
 } from "./pricing-form-options";
 
 type FormState = {
@@ -40,6 +46,18 @@ type FormState = {
   miType: string;
   miFinanced: string;
   vaFundingFee: string;
+  propertyState: string;
+  zipCode: string;
+  ficoScore: string;
+  propertyType: string;
+  propertyUse: string;
+  latePayments: string;
+  late30Count: string;
+  late60Count: string;
+  late90Count: string;
+  late120Count: string;
+  bankruptcyLast3Years: string;
+  noticeOfDefault: string;
 };
 
 type FieldErrors = Partial<Record<keyof FormState, string>>;
@@ -58,6 +76,18 @@ const initialState: FormState = {
   miType: "Borrower Paid MI",
   miFinanced: "No",
   vaFundingFee: "Financed",
+  propertyState: "CA",
+  zipCode: "",
+  ficoScore: "",
+  propertyType: "Single Family Residence",
+  propertyUse: "Primary",
+  latePayments: "No",
+  late30Count: "0",
+  late60Count: "0",
+  late90Count: "0",
+  late120Count: "0",
+  bankruptcyLast3Years: "No",
+  noticeOfDefault: "No",
 };
 
 function parseAmount(value: string): number | null {
@@ -65,6 +95,16 @@ function parseAmount(value: string): number | null {
   if (trimmed === "") return null;
   const parsed = Number(trimmed);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseCount(value: string): number | null {
+  const trimmed = value.trim();
+  if (trimmed === "") return null;
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed) || !Number.isInteger(parsed) || parsed < 0) {
+    return null;
+  }
+  return parsed;
 }
 
 function formatPercent(ratio: number): string {
@@ -115,9 +155,11 @@ export function PricingForm({ onSubmit }: PricingFormProps) {
     return calculateLtv(loanAmount, propertyValue);
   }, [propertyValue, loanAmount]);
 
-  const showMiType = ltv !== null && ltv > LTV_MI_THRESHOLD;
+  const showMiType =
+    form.loanProduct !== "VA" && ltv !== null && ltv > LTV_MI_THRESHOLD;
   const showMiFinanced = form.loanProduct === "FHA";
   const showVaFundingFee = form.loanProduct === "VA";
+  const showLatePaymentCounts = form.latePayments === "Yes";
   const termOptions = form.loanType === "Adjustable" ? ADJUSTABLE_TERMS : FIXED_TERMS;
 
   function updateField<K extends keyof FormState>(key: K, value: FormState[K]) {
@@ -188,6 +230,55 @@ export function PricingForm({ onSubmit }: PricingFormProps) {
       next.vaFundingFee = "Select VA funding fee.";
     }
 
+    if (!form.propertyState) {
+      next.propertyState = "Select property state.";
+    }
+
+    const zip = form.zipCode.trim();
+    if (!/^\d{5}$/.test(zip)) {
+      next.zipCode = "Enter a valid 5-digit ZIP code.";
+    }
+
+    const fico = parseAmount(form.ficoScore);
+    if (fico === null || !Number.isInteger(fico)) {
+      next.ficoScore = "Enter a valid FICO score.";
+    } else if (fico < FICO_MIN || fico > FICO_MAX) {
+      next.ficoScore = `FICO score must be between ${FICO_MIN} and ${FICO_MAX}.`;
+    }
+
+    if (!form.propertyType) next.propertyType = "Select property type.";
+    if (!form.propertyUse) next.propertyUse = "Select property use.";
+    if (!form.latePayments) next.latePayments = "Select late payments.";
+
+    if (showLatePaymentCounts) {
+      const late30 = parseCount(form.late30Count);
+      const late60 = parseCount(form.late60Count);
+      const late90 = parseCount(form.late90Count);
+      const late120 = parseCount(form.late120Count);
+
+      if (late30 === null) next.late30Count = "Enter a valid count.";
+      if (late60 === null) next.late60Count = "Enter a valid count.";
+      if (late90 === null) next.late90Count = "Enter a valid count.";
+      if (late120 === null) next.late120Count = "Enter a valid count.";
+
+      if (
+        late30 !== null &&
+        late60 !== null &&
+        late90 !== null &&
+        late120 !== null &&
+        late30 + late60 + late90 + late120 === 0
+      ) {
+        next.late30Count = "Enter at least one late payment count.";
+      }
+    }
+
+    if (!form.bankruptcyLast3Years) {
+      next.bankruptcyLast3Years = "Select bankruptcy.";
+    }
+    if (!form.noticeOfDefault) {
+      next.noticeOfDefault = "Select notice of default.";
+    }
+
     return next;
   }
 
@@ -220,6 +311,24 @@ export function PricingForm({ onSubmit }: PricingFormProps) {
       ...(showVaFundingFee && {
         vaFundingFee: form.vaFundingFee as PricingScenario["vaFundingFee"],
       }),
+      propertyState: form.propertyState as PricingScenario["propertyState"],
+      zipCode: form.zipCode.trim(),
+      ficoScore: parseAmount(form.ficoScore)!,
+      propertyType: form.propertyType as PricingScenario["propertyType"],
+      propertyUse: form.propertyUse as PricingScenario["propertyUse"],
+      latePayments: form.latePayments as PricingScenario["latePayments"],
+      ...(showLatePaymentCounts && {
+        latePaymentCounts: {
+          days30: parseCount(form.late30Count)!,
+          days60: parseCount(form.late60Count)!,
+          days90: parseCount(form.late90Count)!,
+          days120: parseCount(form.late120Count)!,
+        },
+      }),
+      bankruptcyLast3Years:
+        form.bankruptcyLast3Years as PricingScenario["bankruptcyLast3Years"],
+      noticeOfDefault:
+        form.noticeOfDefault as PricingScenario["noticeOfDefault"],
     };
 
     onSubmit?.(scenario);
@@ -422,6 +531,168 @@ export function PricingForm({ onSubmit }: PricingFormProps) {
           </select>
         </Field>
       ) : null}
+
+      <Field label="Property State" error={errors.propertyState}>
+        <select
+          className={selectClassName}
+          value={form.propertyState}
+          onChange={(e) => updateField("propertyState", e.target.value)}
+        >
+          {PROPERTY_STATES.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+      </Field>
+
+      <Field label="ZIP Code" error={errors.zipCode}>
+        <input
+          type="text"
+          inputMode="numeric"
+          className={inputClassName}
+          maxLength={5}
+          placeholder="12345"
+          value={form.zipCode}
+          onChange={(e) =>
+            updateField("zipCode", e.target.value.replace(/\D/g, "").slice(0, 5))
+          }
+        />
+      </Field>
+
+      <Field label="FICO Score" error={errors.ficoScore}>
+        <input
+          type="number"
+          className={inputClassName}
+          min={FICO_MIN}
+          max={FICO_MAX}
+          step={1}
+          placeholder={`${FICO_MIN} – ${FICO_MAX}`}
+          value={form.ficoScore}
+          onChange={(e) => updateField("ficoScore", e.target.value)}
+        />
+      </Field>
+
+      <Field label="Property Type" error={errors.propertyType}>
+        <select
+          className={selectClassName}
+          value={form.propertyType}
+          onChange={(e) => updateField("propertyType", e.target.value)}
+        >
+          {PROPERTY_TYPES.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+      </Field>
+
+      <Field label="Property Use" error={errors.propertyUse}>
+        <select
+          className={selectClassName}
+          value={form.propertyUse}
+          onChange={(e) => updateField("propertyUse", e.target.value)}
+        >
+          {PROPERTY_USES.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+      </Field>
+
+      <Field label="Late Payments" error={errors.latePayments}>
+        <select
+          className={selectClassName}
+          value={form.latePayments}
+          onChange={(e) => updateField("latePayments", e.target.value)}
+        >
+          {YES_NO_OPTIONS.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+      </Field>
+
+      {showLatePaymentCounts ? (
+        <fieldset className="flex flex-col gap-3 rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
+          <legend className="px-1 text-sm font-medium text-zinc-800 dark:text-zinc-200">
+            Late payment counts
+          </legend>
+          <Field label="30-day" error={errors.late30Count}>
+            <input
+              type="number"
+              className={inputClassName}
+              min={0}
+              step={1}
+              value={form.late30Count}
+              onChange={(e) => updateField("late30Count", e.target.value)}
+            />
+          </Field>
+          <Field label="60-day" error={errors.late60Count}>
+            <input
+              type="number"
+              className={inputClassName}
+              min={0}
+              step={1}
+              value={form.late60Count}
+              onChange={(e) => updateField("late60Count", e.target.value)}
+            />
+          </Field>
+          <Field label="90-day" error={errors.late90Count}>
+            <input
+              type="number"
+              className={inputClassName}
+              min={0}
+              step={1}
+              value={form.late90Count}
+              onChange={(e) => updateField("late90Count", e.target.value)}
+            />
+          </Field>
+          <Field label="120-day" error={errors.late120Count}>
+            <input
+              type="number"
+              className={inputClassName}
+              min={0}
+              step={1}
+              value={form.late120Count}
+              onChange={(e) => updateField("late120Count", e.target.value)}
+            />
+          </Field>
+        </fieldset>
+      ) : null}
+
+      <Field
+        label="Bankruptcy in Last 3 Years"
+        error={errors.bankruptcyLast3Years}
+      >
+        <select
+          className={selectClassName}
+          value={form.bankruptcyLast3Years}
+          onChange={(e) => updateField("bankruptcyLast3Years", e.target.value)}
+        >
+          {YES_NO_OPTIONS.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+      </Field>
+
+      <Field label="Notice of Default" error={errors.noticeOfDefault}>
+        <select
+          className={selectClassName}
+          value={form.noticeOfDefault}
+          onChange={(e) => updateField("noticeOfDefault", e.target.value)}
+        >
+          {YES_NO_OPTIONS.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+      </Field>
 
       <button
         type="submit"
